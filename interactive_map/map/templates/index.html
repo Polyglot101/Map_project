@@ -1,0 +1,219 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Interactive Map</title>
+  <link rel="stylesheet" href="{% static 'leaflet/leaflet.css' %}" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css" />
+  <link rel="icon"
+    href="https://imgs.search.brave.com/rJ1bWmt_ywC30s9IH-re6MAPbUahWUdDl524SUFa-zU/rs:fit:860:0:0/g:ce/aHR0cHM6Ly93d3cu/cG5nYWxsLmNvbS93/cC1jb250ZW50L3Vw/bG9hZHMvNS9Hb29n/bGUtTWFwcy1QTkct/UGljdHVyZS5wbmc" />
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      background-color: #5e5c5c;
+    }
+
+    #header {
+      background-color: #000000;
+      color: white;
+      padding: 10px 0;
+      text-align: center;
+    }
+
+    #map-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: calc(100vh - 50px);
+      position: relative;
+    }
+
+    #map {
+      height: 500px;
+      width: 800px;
+    }
+
+    .leaflet-popup-content-wrapper {
+      background-color: #fff;
+      border-radius: 5px;
+    }
+
+    .leaflet-popup-tip-container {
+      display: none;
+    }
+
+    .leaflet-popup-content {
+      margin: 8px;
+    }
+
+    footer {
+      text-align: center;
+    }
+
+    /* Hide the form initially */
+    #form-container {
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+  <header id="header">
+    <h1>Pin Point</h1>
+  </header>
+  <main id="content">
+    <div id="map-container">
+      <div id="map"></div>
+    </div>
+    <div id="form-container">
+      <form id="userLocationForm" method="post">
+        {% csrf_token %}
+        <label for="name">Name:</label>
+        <input type="text" id="name" name="name" required autocomplete="off">
+        <input type="hidden" id="latitude" name="latitude">
+        <input type="hidden" id="longitude" name="longitude">
+        <button type="submit">Save Location</button>
+      </form>
+    </div>
+  </main>
+  <footer>
+    <p><b>Tap Anywhere On The Map To Get Started.</b></p>
+    <p><b>Choose A Name For Yourself And Allow Location Permision.</b></p>
+    <p><b>Scroll down, look to the left for a form field which has your name that you entered earlier and then press "save location".</b></p>
+    <p><b>Tap On Someone's Marker/Name To Get The Shortest Route.</b></p>
+    <p style="color: red">
+      Made With ❤ By <a href="https://sawwqib.vercel.app">Saqib</a>
+    </p>
+  </footer>
+  <script src="{% static 'leaflet/leaflet.js' %}"></script>
+  <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.js"></script>
+  <script>
+    var mymap = L.map("map").setView([0, 0], 2);
+    var markers = [];
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(mymap);
+
+    mymap.on('click', function (e) {
+      var latitude = e.latlng.lat;
+      var longitude = e.latlng.lng;
+
+      document.getElementById('latitude').value = latitude;
+      document.getElementById('longitude').value = longitude;
+
+      document.getElementById('form-container').style.display = 'block'; // Display the form
+    });
+
+    var staticUrl = "{% static 'Google-Maps-PNG-Picture.webp' %}";
+
+    function addMarker(latlng, userName) {
+      var markerIcon = L.icon({
+        iconUrl: staticUrl,
+        iconSize: [40, 40],
+        iconAnchor: [20, 40],
+        popupAnchor: [0, -40],
+      });
+      var marker = L.marker(latlng, { icon: markerIcon }).addTo(mymap);
+      markers.push(marker);
+
+      marker.userName = userName;
+
+      marker.bindPopup(userName).openPopup();
+
+      marker.on("click", function () {
+        fetch(`/get_shortest_route/?user_name=${userName}`)
+          .then(response => response.json())
+          .then(data => {
+            // Handle the response data (e.g., display the route on the map)
+            console.log(data);
+          })
+          .catch(error => {
+            console.error('Error:', error);
+          });
+      });
+    }
+
+    var userName;
+
+    function markUserLocation() {
+      userName = prompt("Please enter your name:");
+      if (userName != null && userName != "") {
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(function (position) {
+            var userLat = position.coords.latitude;
+            var userLng = position.coords.longitude;
+            var userLocation = L.latLng(userLat, userLng);
+            addMarker(userLocation, userName);
+            mymap.setView(userLocation, 13);
+
+            document.getElementById('name').value = userName;
+
+            document.getElementById('form-container').style.display = 'block';
+          });
+        } else {
+          alert("Geolocation is not supported by this browser.");
+        }
+      } else {
+        alert("Please enter a valid name.");
+      }
+    }
+
+    mymap.on("click", markUserLocation);
+  </script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      document.getElementById('userLocationForm').addEventListener('submit', function (event) {
+        event.preventDefault(); // Prevent default form submission
+
+        // Get form data
+        var formData = new FormData(this);
+
+        // Send POST request to save location
+        fetch('/save_location/', {
+          method: 'POST',
+          body: formData,
+          headers: {
+            'X-CSRFToken': getCookie('csrftoken') 
+          }
+        })
+          .then(response => response.json())
+          .then(data => {
+            if (data.success) {
+              alert('Location saved successfully');
+            } else {
+              alert('Failed to save location. Please check your input.');
+            }
+          })
+          .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while saving the location.');
+          });
+      });
+    });
+
+    // Function to get CSRF cookie
+    function getCookie(name) {
+      var cookieValue = null;
+      if (document.cookie && document.cookie !== '') {
+        var cookies = document.cookie.split(';');
+        for (var i = 0; i < cookies.length; i++) {
+          var cookie = cookies[i].trim();
+          if (cookie.substring(0, name.length + 1) === (name + '=')) {
+            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            break;
+          }
+        }
+      }
+      return cookieValue;
+    }
+  </script>
+</body>
+
+</html>
